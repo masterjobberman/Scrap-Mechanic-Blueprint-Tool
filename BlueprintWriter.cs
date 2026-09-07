@@ -9,7 +9,7 @@ internal static class BlueprintWriter
     public const string GlassCubeUuid = "3d127db0-da28-4483-86fd-3eeed20fb85d";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static string Create(string outputRoot, string name, IReadOnlyList<SelectedItem> selections)
+    public static string Create(string outputRoot, string name, IReadOnlyList<SelectedItem> selections, Image? iconOverride = null, string? descriptionOverride = null)
     {
         if (selections.Count == 0) throw new InvalidOperationException("Add at least one item first.");
         if (!Directory.Exists(outputRoot)) throw new DirectoryNotFoundException("The Blueprints folder does not exist.");
@@ -33,7 +33,7 @@ internal static class BlueprintWriter
             var blueprint = new { bodies = new[] { new { childs = children } }, version = 4 };
             var description = new
             {
-                description = BuildDescription(selections),
+                description = descriptionOverride ?? BuildDescription(selections),
                 localId = id,
                 name = string.IsNullOrWhiteSpace(name) ? "Glass Box Item Pack" : name.Trim(),
                 type = "Blueprint",
@@ -41,7 +41,7 @@ internal static class BlueprintWriter
             };
             File.WriteAllText(Path.Combine(stagingFolder, "blueprint.json"), JsonSerializer.Serialize(blueprint, JsonOptions));
             File.WriteAllText(Path.Combine(stagingFolder, "description.json"), JsonSerializer.Serialize(description, JsonOptions));
-            using (var icon = RenderIcon(selections)) icon.Save(Path.Combine(stagingFolder, "icon.png"), ImageFormat.Png);
+            using (var icon = iconOverride is null ? RenderIcon(selections) : ResizeIcon(iconOverride)) icon.Save(Path.Combine(stagingFolder, "icon.png"), ImageFormat.Png);
             ValidateStaging(stagingFolder, id, selections.Count);
             Directory.Move(stagingFolder, finalFolder);
             return finalFolder;
@@ -51,6 +51,36 @@ internal static class BlueprintWriter
             if (Directory.Exists(stagingFolder)) Directory.Delete(stagingFolder, true);
             throw;
         }
+    }
+
+    public static Bitmap RenderPartsIcon(Image source)
+    {
+        var bmp = ResizeIcon(source);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var badge = new Rectangle(66, 66, 58, 58);
+        using var shadow = new SolidBrush(Color.FromArgb(185, 31, 33, 36));
+        using var rim = new Pen(Color.FromArgb(235, 242, 126, 32), 4);
+        g.FillEllipse(shadow, badge);
+        g.DrawEllipse(rim, badge);
+        using var gearFont = new Font("Segoe UI Symbol", 30, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var white = new SolidBrush(Color.FromArgb(245, 245, 245, 245));
+        g.DrawString("⚙", gearFont, white, new RectangleF(72, 67, 47, 36), new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
+        using var labelFont = new Font("Segoe UI", 10, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var orange = new SolidBrush(Color.FromArgb(255, 242, 126, 32));
+        g.DrawString("PARTS", labelFont, orange, new RectangleF(70, 101, 50, 15), new StringFormat { Alignment = StringAlignment.Center });
+        return bmp;
+    }
+
+    private static Bitmap ResizeIcon(Image source)
+    {
+        var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bmp);
+        g.CompositingMode = CompositingMode.SourceCopy;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.DrawImage(source, new Rectangle(0, 0, 128, 128));
+        return bmp;
     }
 
     public static Bitmap RenderIcon(IReadOnlyList<SelectedItem> selections)

@@ -113,7 +113,7 @@ internal static class GameDataLoader
         }
     }
 
-    private static Image MakeFallbackIcon(string title)
+    public static Image MakeFallbackIcon(string title)
     {
         var bmp = new Bitmap(64, 64);
         using var g = Graphics.FromImage(bmp);

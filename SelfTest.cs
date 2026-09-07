@@ -19,6 +19,19 @@ internal static class SelfTest
             var folder = BlueprintWriter.Create(testRoot, "Self Test Component Kits", selection);
             var required = new[] { "blueprint.json", "description.json", "icon.png" };
             if (!required.All(file => File.Exists(Path.Combine(folder, file)))) throw new InvalidDataException("Generated blueprint is incomplete.");
+
+            var itemLookup = items.ToDictionary(x => x.Uuid, StringComparer.OrdinalIgnoreCase);
+            var parsedTest = BlueprintLibrary.Load(testRoot, null, false, itemLookup).Single();
+            if (parsedTest.Materials.Count != 1 || parsedTest.Materials[0].Uuid != BlueprintWriter.GlassCubeUuid || parsedTest.Materials[0].Quantity != 1)
+                throw new InvalidDataException("Blueprint material counting failed.");
+            using var partsIcon = BlueprintWriter.RenderPartsIcon(parsedTest.Icon);
+            if (partsIcon.Width != 128 || partsIcon.Height != 128) throw new InvalidDataException("The parts overlay icon is invalid.");
+
+            var blueprintRoot = GameDataLoader.FindBlueprintRoot() ?? throw new InvalidOperationException("The local Blueprints folder was not detected.");
+            var workshopRoot = BlueprintLibrary.FindWorkshopRoot(gameRoot);
+            var library = BlueprintLibrary.Load(blueprintRoot, workshopRoot, true, itemLookup);
+            if (!library.Any(x => x.Source == "Local")) throw new InvalidDataException("No local blueprints were found.");
+            if (workshopRoot is not null && !library.Any(x => x.Source == "Steam Workshop")) throw new InvalidDataException("No subscribed Workshop blueprints were found.");
             return 0;
         }
         catch
