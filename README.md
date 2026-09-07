@@ -5,6 +5,16 @@ installed game's `survival_items.lua`, English item names, and the official inve
 atlases, then creates one connected glass cube per selected item stack. It can also inspect
 existing blueprints and build a boxed item pack containing all of their construction parts.
 
+## Screenshots
+
+### Item Pack Builder
+
+![Item Pack Builder](docs/item-pack-builder.png)
+
+### Blueprint Materials
+
+![Blueprint Materials](docs/blueprint-materials.png)
+
 ## Use
 
 1. Run `GlassBoxBlueprintMaker.exe`.
