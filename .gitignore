@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+publish/
+
+# Local .NET/NuGet state
+.dotnet/
+.nuget/
+
+# IDE and user-specific files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Packages and logs
+*.zip
+*.log
+
+# Windows metadata
+Thumbs.db
+Desktop.ini
