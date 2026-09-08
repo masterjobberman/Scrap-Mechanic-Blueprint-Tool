@@ -41,7 +41,7 @@ internal static class BlueprintWriter
             };
             File.WriteAllText(Path.Combine(stagingFolder, "blueprint.json"), JsonSerializer.Serialize(blueprint, JsonOptions));
             File.WriteAllText(Path.Combine(stagingFolder, "description.json"), JsonSerializer.Serialize(description, JsonOptions));
-            using (var icon = iconOverride is null ? RenderIcon(selections) : ResizeIcon(iconOverride)) icon.Save(Path.Combine(stagingFolder, "icon.png"), ImageFormat.Png);
+            using (var icon = iconOverride is null ? RenderIcon(selections, name) : ResizeIcon(iconOverride)) icon.Save(Path.Combine(stagingFolder, "icon.png"), ImageFormat.Png);
             ValidateStaging(stagingFolder, id, selections.Count);
             Directory.Move(stagingFolder, finalFolder);
             return finalFolder;
@@ -55,23 +55,52 @@ internal static class BlueprintWriter
 
     public static Bitmap RenderPartsIcon(Image source)
     {
-        var bmp = ResizeIcon(source);
-        using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        var badge = new Rectangle(66, 66, 58, 58);
-        using var shadow = new SolidBrush(Color.FromArgb(185, 31, 33, 36));
-        using var rim = new Pen(Color.FromArgb(235, 242, 126, 32), 4);
-        g.FillEllipse(shadow, badge);
-        g.DrawEllipse(rim, badge);
-        using var gearFont = new Font("Segoe UI Symbol", 30, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var white = new SolidBrush(Color.FromArgb(245, 245, 245, 245));
-        g.DrawString("⚙", gearFont, white, new RectangleF(72, 67, 47, 36), new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
-        using var labelFont = new Font("Segoe UI", 10, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var orange = new SolidBrush(Color.FromArgb(255, 242, 126, 32));
-        g.DrawString("PARTS", labelFont, orange, new RectangleF(70, 101, 50, 15), new StringFormat { Alignment = StringAlignment.Center });
-        return bmp;
+        using var canvas = new Bitmap(512, 512, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(canvas))
+        {
+            ConfigureIconCanvas(g);
+            DrawIconPlate(g);
+            g.DrawImage(source, new Rectangle(12, 8, 104, 91));
+            DrawIconLabel(g, "PARTS PACK", new RectangleF(7, 103, 114, 17), 10, WorkshopTheme.Accent);
+            using var rim = new Pen(WorkshopTheme.Accent, 2);
+            g.DrawLine(rim, 14, 100, 114, 100);
+        }
+        return ResizeIcon(canvas);
     }
 
+    private static void ConfigureIconCanvas(Graphics g)
+    {
+        g.ScaleTransform(4, 4);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+    }
+
+    private static void DrawIconPlate(Graphics g)
+    {
+        using var plate = WorkshopTheme.Plate(new Rectangle(3, 3, 122, 122), 10);
+        using var background = new LinearGradientBrush(new Rectangle(0, 0, 128, 128), Color.FromArgb(39, 94, 123), Color.FromArgb(16, 43, 60), 90f);
+        g.FillPath(background, plate);
+        var state = g.Save();
+        g.SetClip(plate);
+        WorkshopTheme.Grid(g, new Rectangle(4, 4, 120, 120), 12);
+        using var footer = new SolidBrush(Color.FromArgb(235, 21, 31, 37));
+        g.FillRectangle(footer, 4, 101, 120, 24);
+        g.Restore(state);
+        using var border = new Pen(WorkshopTheme.Accent, 2.5f);
+        g.DrawPath(border, plate);
+        using var bolt = new SolidBrush(Color.FromArgb(176, 206, 218));
+        g.FillEllipse(bolt, 8, 8, 3, 3);
+        g.FillEllipse(bolt, 117, 117, 3, 3);
+    }
+
+    private static void DrawIconLabel(Graphics g, string text, RectangleF area, float size, Color color)
+    {
+        using var font = new Font("Segoe UI", size, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var brush = new SolidBrush(color);
+        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+        g.DrawString(text, font, brush, area, format);
+    }
     private static Bitmap ResizeIcon(Image source)
     {
         var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
@@ -83,49 +112,34 @@ internal static class BlueprintWriter
         return bmp;
     }
 
-    public static Bitmap RenderIcon(IReadOnlyList<SelectedItem> selections)
+    public static Bitmap RenderIcon(IReadOnlyList<SelectedItem> selections, string? packName = null)
     {
-        var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
-        using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        using var background = new LinearGradientBrush(new Rectangle(0, 0, 128, 128), Color.FromArgb(255, 54, 57, 62), Color.FromArgb(255, 31, 33, 36), 45f);
-        g.FillRectangle(background, 0, 0, 128, 128);
-        using var border = new Pen(Color.FromArgb(242, 126, 32), 5);
-        g.DrawRectangle(border, 3, 3, 121, 121);
-
-        if (selections.Count > 0 && selections[0].Item.Icon is not null)
+        using var canvas = new Bitmap(512, 512, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(canvas))
         {
-            using var glow = new SolidBrush(Color.FromArgb(90, 242, 126, 32));
-            g.FillEllipse(glow, 8, 9, 70, 70);
-            g.DrawImage(selections[0].Item.Icon!, new Rectangle(12, 12, 62, 62));
+            ConfigureIconCanvas(g);
+            DrawIconPlate(g);
+            var itemName = string.IsNullOrWhiteSpace(packName) ? "Glass Box Item Pack" : packName.Trim();
+            DrawIconLabel(g, itemName, new RectangleF(14, 8, 102, 12), 9, Color.FromArgb(225, 241, 245));
+            var cube = new[] { new Point(29, 37), new Point(64, 23), new Point(99, 37), new Point(99, 72), new Point(64, 87), new Point(29, 72) };
+            using var glass = new SolidBrush(Color.FromArgb(45, 150, 214, 241));
+            g.FillPolygon(glass, cube);
+            if (selections.Count > 0 && selections[0].Item.Icon is Image itemIcon)
+                g.DrawImage(itemIcon, new Rectangle(37, 32, 54, 48));
+            using var edge = new Pen(Color.FromArgb(214, 229, 248, 255), 1.5f);
+            g.DrawPolygon(edge, cube);
+            g.DrawLine(edge, 29, 37, 64, 52);
+            g.DrawLine(edge, 99, 37, 64, 52);
+            g.DrawLine(edge, 64, 52, 64, 87);
+            using var badge = new SolidBrush(WorkshopTheme.Accent);
+            g.FillRectangle(badge, 27, 84, 74, 15);
+            var quantity = selections.Count == 1 ? $"x{selections[0].Quantity:N0}" : $"{selections.Count} ITEM TYPES";
+            DrawIconLabel(g, quantity, new RectangleF(28, 84, 72, 15), 9, Color.FromArgb(23, 31, 34));
+            var title = selections.Count > 1 ? $"+{selections.Count - 1} other item types" : "";
+            DrawIconLabel(g, title, new RectangleF(10, 103, 108, 17), 9, Color.FromArgb(237, 243, 235));
         }
-        using var cubePen = new Pen(Color.FromArgb(220, 235, 238, 240), 2);
-        g.DrawPolygon(cubePen, new[] { new Point(13, 20), new Point(47, 7), new Point(79, 23), new Point(79, 62), new Point(47, 78), new Point(13, 61), new Point(13, 20) });
-        g.DrawLine(cubePen, 47, 7, 47, 45); g.DrawLine(cubePen, 13, 20, 47, 45); g.DrawLine(cubePen, 79, 23, 47, 45); g.DrawLine(cubePen, 47, 45, 47, 78);
-
-        var lines = selections.Take(3).Select(x => $"{x.Quantity}x {x.Item.Title}").ToList();
-        if (selections.Count > 3) lines.Add($"+{selections.Count - 3} more");
-        var y = 82f;
-        foreach (var line in lines)
-        {
-            var fontSize = FitFont(g, line, 114, 13, 7);
-            using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var brush = new SolidBrush(Color.White);
-            g.DrawString(line, font, brush, new RectangleF(7, y, 114, 12), new StringFormat { Alignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap });
-            y += 11;
-        }
-        return bmp;
+        return ResizeIcon(canvas);
     }
-
-    private static float FitFont(Graphics g, string text, float width, float start, float minimum)
-    {
-        for (var size = start; size >= minimum; size--)
-            using (var font = new Font("Segoe UI", size, FontStyle.Bold, GraphicsUnit.Pixel))
-                if (g.MeasureString(text, font).Width <= width) return size;
-        return minimum;
-    }
-
     private static string BuildDescription(IReadOnlyList<SelectedItem> selections)
     {
         var text = string.Join(", ", selections.Select(x => $"{x.Quantity}x {x.Item.Title}"));
@@ -152,3 +166,6 @@ internal static class BlueprintWriter
         if (icon.Width != 128 || icon.Height != 128) throw new InvalidDataException("Blueprint icon is not 128x128.");
     }
 }
+
+
+

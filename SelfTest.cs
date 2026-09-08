@@ -7,7 +7,7 @@ internal static class SelfTest
         var testRoot = Path.Combine(Path.GetTempPath(), "GlassBoxBlueprintMaker-SelfTest-" + Guid.NewGuid());
         try
         {
-            using var form = new MainForm();
+            using var form = new MainForm(false);
             if (form.Text != "Glass Box Blueprint Maker") throw new InvalidDataException("The main window could not be constructed.");
             var gameRoot = GameDataLoader.FindGameRoot() ?? throw new InvalidOperationException("Scrap Mechanic was not detected.");
             var items = GameDataLoader.LoadItems(gameRoot);
@@ -32,10 +32,13 @@ internal static class SelfTest
             var library = BlueprintLibrary.Load(blueprintRoot, workshopRoot, true, itemLookup);
             if (!library.Any(x => x.Source == "Local")) throw new InvalidDataException("No local blueprints were found.");
             if (workshopRoot is not null && !library.Any(x => x.Source == "Steam Workshop")) throw new InvalidDataException("No subscribed Workshop blueprints were found.");
+            form.VerifyUi(items, new List<BlueprintEntry> { parsedTest }, Path.Combine(AppContext.BaseDirectory, "ui-verification"));
+            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test-result.txt"), $"PASS: {items.Count} items; {library.Count} blueprints; creation, material counting, icons, search, add, merge, quantity edit, remove, empty states, both tabs at default and minimum sizes.");
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
+            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test-result.txt"), ex.ToString());
             return 1;
         }
         finally
@@ -44,3 +47,4 @@ internal static class SelfTest
         }
     }
 }
+

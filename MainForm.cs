@@ -5,56 +5,61 @@ namespace GlassBoxBlueprintMaker;
 internal sealed class MainForm : Form
 {
     private readonly Color Orange = Color.FromArgb(242, 126, 32);
-    private readonly Color Dark = Color.FromArgb(36, 38, 41);
-    private readonly Color PanelGrey = Color.FromArgb(54, 57, 62);
+    private readonly Color Dark = Color.FromArgb(16, 23, 25);
+    private readonly Color PanelGrey = Color.FromArgb(29, 38, 39);
+    private readonly WorkshopHeader workshopHeader = new();
+    private bool busy;
+    private int libraryLoadVersion;
     private readonly TextBox searchBox = new();
-    private readonly ComboBox categoryBox = new();
+    private readonly WorkshopCategoryBox categoryBox = new();
     private readonly DataGridView itemGrid = new();
     private readonly DataGridView selectedGrid = new();
     private readonly NumericUpDown quantity = new();
     private readonly TextBox nameBox = new();
     private readonly TextBox gamePathBox = new();
     private readonly TextBox outputPathBox = new();
-    private readonly PictureBox preview = new();
+    private readonly WorkshopPreview preview = new();
     private readonly Label status = new();
-    private readonly Button addButton = new();
-    private readonly Button removeButton = new();
-    private readonly Button generateButton = new();
+    private readonly WorkshopButton addButton = new();
+    private readonly WorkshopButton removeButton = new();
+    private readonly WorkshopButton generateButton = new();
     private readonly SplitContainer split = new();
-    private readonly TabControl mainTabs = new();
+    private readonly StudioTabs mainTabs = new();
+    private readonly SplitContainer blueprintSplit = new();
     private readonly TextBox blueprintSearchBox = new();
     private readonly CheckBox includeWorkshopCheck = new();
     private readonly DataGridView blueprintGrid = new();
     private readonly DataGridView materialGrid = new();
-    private readonly PictureBox materialPreview = new();
+    private readonly WorkshopPreview materialPreview = new();
     private readonly Label blueprintStatus = new();
-    private readonly Button refreshBlueprintsButton = new();
-    private readonly Button createMaterialsButton = new();
+    private readonly WorkshopButton refreshBlueprintsButton = new();
+    private readonly WorkshopButton createMaterialsButton = new();
     private readonly BindingList<SelectedItem> selected = new();
     private List<GameItem> allItems = new();
     private List<BlueprintEntry> allBlueprints = new();
     private BlueprintEntry? activeBlueprint;
 
-    public MainForm()
+    public MainForm(bool loadOnShow = true)
     {
         Text = "Glass Box Blueprint Maker";
-        MinimumSize = new Size(1040, 700);
-        Size = new Size(1220, 780);
+        MinimumSize = new Size(1040, 760);
+        Size = new Size(1320, 860);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Dark;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 9.5f);
         BuildUi();
+        ApplyModernTheme(this);
+        SetBusy(false);
         Shown += (_, _) => SizeMainPanels();
-        Shown += async (_, _) => await LoadGameDataAsync();
+        Resize += (_, _) => SizeMainPanels();
+        mainTabs.SelectedIndexChanged += (_, _) => SizeMainPanels();
+        if (loadOnShow) Shown += async (_, _) => await LoadGameDataAsync();
     }
 
     private void BuildUi()
     {
-        var header = new Panel { Dock = DockStyle.Top, Height = 76, BackColor = Color.FromArgb(28, 29, 31), Padding = new Padding(20, 12, 20, 8) };
-        var title = new Label { Text = "GLASS BOX  BLUEPRINT MAKER", Font = new Font("Segoe UI Semibold", 19, FontStyle.Bold), ForeColor = Orange, AutoSize = true, Location = new Point(18, 10) };
-        var subtitle = new Label { Text = "Choose survival items • set quantities • create a new vanilla blueprint", ForeColor = Color.Gainsboro, AutoSize = true, Location = new Point(21, 45) };
-        header.Controls.AddRange(new Control[] { title, subtitle });
+        var header = workshopHeader;
 
         var paths = new TableLayoutPanel { Dock = DockStyle.Top, Height = 84, ColumnCount = 4, Padding = new Padding(12, 8, 12, 4), BackColor = PanelGrey };
         paths.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104)); paths.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); paths.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88)); paths.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 8));
@@ -68,12 +73,12 @@ internal sealed class MainForm : Form
         split.Panel1.BackColor = Dark; split.Panel2.BackColor = PanelGrey;
         mainTabs.Dock = DockStyle.Fill;
         mainTabs.Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold);
-        mainTabs.Padding = new Point(18, 7);
-        var itemTab = new TabPage("ITEM PACK BUILDER") { BackColor = Dark, ForeColor = Color.White, Padding = new Padding(0) };
-        var blueprintTab = new TabPage("BLUEPRINT MATERIALS") { BackColor = Dark, ForeColor = Color.White, Padding = new Padding(0) };
+        var itemTab = new Panel { Text = "01   /   ITEM PACK BUILDER", BackColor = Dark, ForeColor = Color.White, Padding = new Padding(0) };
+        var blueprintTab = new Panel { Text = "02   /   BLUEPRINT MATERIALS", BackColor = Dark, ForeColor = Color.White, Padding = new Padding(0) };
         itemTab.Controls.Add(split);
         mainTabs.TabPages.Add(itemTab);
         mainTabs.TabPages.Add(blueprintTab);
+        mainTabs.Initialize();
         BuildBlueprintTab(blueprintTab);
         var root = new TableLayoutPanel
         {
@@ -84,7 +89,7 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Dark
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.Controls.Add(header, 0, 0);
@@ -92,12 +97,22 @@ internal sealed class MainForm : Form
         root.Controls.Add(mainTabs, 0, 2);
         Controls.Add(root);
 
-        var leftTop = new TableLayoutPanel { Dock = DockStyle.Top, Height = 42, ColumnCount = 2 };
+        var leftTop = new TableLayoutPanel { Dock = DockStyle.Top, Height = 64, ColumnCount = 2 };
+        leftTop.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         leftTop.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70)); leftTop.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
         searchBox.PlaceholderText = "Search item name, symbol, or UUID..."; searchBox.Dock = DockStyle.Fill;
         categoryBox.Dock = DockStyle.Fill; categoryBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        categoryBox.DrawMode = DrawMode.OwnerDrawFixed;
+        categoryBox.DrawItem += (_, e) =>
+        {
+            using var background = new SolidBrush(Color.FromArgb(39, 49, 56));
+            e.Graphics.FillRectangle(background, e.Bounds);
+            var text = e.Index >= 0 ? categoryBox.Items[e.Index]?.ToString() : "All categories";
+            TextRenderer.DrawText(e.Graphics, text, Font, e.Bounds, Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            e.DrawFocusRectangle();
+        };
         searchBox.TextChanged += (_, _) => ApplyFilter(); categoryBox.SelectedIndexChanged += (_, _) => ApplyFilter();
-        leftTop.Controls.Add(searchBox, 0, 0); leftTop.Controls.Add(categoryBox, 1, 0);
+        leftTop.Controls.Add(SearchField("FIND AN ITEM", searchBox), 0, 0); leftTop.Controls.Add(SearchField("CATEGORY", categoryBox), 1, 0);
         split.Panel1.Controls.Add(itemGrid); split.Panel1.Controls.Add(leftTop);
         ConfigureItemGrid();
 
@@ -109,7 +124,7 @@ internal sealed class MainForm : Form
 
         var right = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 7, Padding = new Padding(12), BackColor = PanelGrey };
         right.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); right.RowStyles.Add(new RowStyle(SizeType.Absolute, 36)); right.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); right.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); right.RowStyles.Add(new RowStyle(SizeType.Absolute, 144)); right.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); right.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        right.Controls.Add(MakeLabel("Blueprint name"), 0, 0); nameBox.Text = "My Glass Box Item Pack"; nameBox.Dock = DockStyle.Fill; right.Controls.Add(nameBox, 0, 1);
+        right.Controls.Add(MakeLabel("PACK CONFIGURATION / Name"), 0, 0); nameBox.Text = "My Glass Box Item Pack"; nameBox.TextChanged += (_, _) => RefreshPreview(); nameBox.Dock = DockStyle.Fill; right.Controls.Add(nameBox, 0, 1);
         right.Controls.Add(selectedGrid, 0, 2); ConfigureSelectedGrid();
         removeButton.Text = "REMOVE SELECTED"; removeButton.Dock = DockStyle.Fill; StyleSecondary(removeButton); removeButton.Click += (_, _) => RemoveSelected(); right.Controls.Add(removeButton, 0, 3);
         preview.SizeMode = PictureBoxSizeMode.CenterImage; preview.Dock = DockStyle.Fill; preview.BackColor = Color.FromArgb(27, 28, 30); right.Controls.Add(preview, 0, 4);
@@ -118,14 +133,16 @@ internal sealed class MainForm : Form
         split.Panel2.Controls.Add(right);
     }
 
-    private void BuildBlueprintTab(TabPage page)
+    private void BuildBlueprintTab(Panel page)
     {
-        var blueprintSplit = new SplitContainer { Dock = DockStyle.Fill, SplitterDistance = 570, BackColor = Dark, Padding = new Padding(12, 10, 12, 8) };
+        blueprintSplit.Dock = DockStyle.Fill;
+        blueprintSplit.BackColor = Dark;
         blueprintSplit.Panel1.BackColor = Dark;
         blueprintSplit.Panel2.BackColor = PanelGrey;
         page.Controls.Add(blueprintSplit);
 
-        var toolbar = new TableLayoutPanel { Dock = DockStyle.Top, Height = 45, ColumnCount = 3, BackColor = Dark };
+        var toolbar = new TableLayoutPanel { Dock = DockStyle.Top, Height = 64, ColumnCount = 3, BackColor = Dark };
+        toolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 115));
@@ -141,7 +158,7 @@ internal sealed class MainForm : Form
         refreshBlueprintsButton.Dock = DockStyle.Fill;
         StyleSecondary(refreshBlueprintsButton);
         refreshBlueprintsButton.Click += async (_, _) => await LoadBlueprintsAsync();
-        toolbar.Controls.Add(blueprintSearchBox, 0, 0);
+        toolbar.Controls.Add(SearchField("FIND A BLUEPRINT", blueprintSearchBox), 0, 0);
         toolbar.Controls.Add(includeWorkshopCheck, 1, 0);
         toolbar.Controls.Add(refreshBlueprintsButton, 2, 0);
         ConfigureBlueprintGrid();
@@ -154,7 +171,7 @@ internal sealed class MainForm : Form
         details.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         details.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         details.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        details.Controls.Add(new Label { Text = "ITEM PARTS FOR SELECTED BLUEPRINT", ForeColor = Orange, Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold), AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        details.Controls.Add(new Label { Text = "MATERIAL MANIFEST", ForeColor = Orange, Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold), AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         materialPreview.Dock = DockStyle.Fill;
         materialPreview.SizeMode = PictureBoxSizeMode.CenterImage;
         materialPreview.BackColor = Color.FromArgb(27, 28, 30);
@@ -216,6 +233,10 @@ internal sealed class MainForm : Form
 
     private void SizeMainPanels()
     {
+        if (blueprintSplit.ClientSize.Width > 700) {
+            blueprintSplit.Panel2MinSize = 350;
+            blueprintSplit.SplitterDistance = Math.Max(350, (int)(blueprintSplit.ClientSize.Width * 0.60));
+        }
         if (split.ClientSize.Width < 700) return;
         split.Panel2MinSize = Math.Min(350, split.ClientSize.Width / 3);
         var maximum = split.ClientSize.Width - split.Panel2MinSize - split.SplitterWidth;
@@ -228,13 +249,13 @@ internal sealed class MainForm : Form
         itemGrid.Columns.Add(new DataGridViewImageColumn { DataPropertyName = "Icon", HeaderText = "", Width = 70, ImageLayout = DataGridViewImageCellLayout.Zoom });
         itemGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Title", HeaderText = "ITEM", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
         itemGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Category", HeaderText = "TYPE", Width = 90 });
-        itemGrid.CellDoubleClick += (_, _) => AddSelectedItem(); StyleGrid(itemGrid);
+        itemGrid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0 && !busy) AddSelectedItem(); }; StyleGrid(itemGrid);
     }
 
     private void ConfigureSelectedGrid()
     {
         selectedGrid.Dock = DockStyle.Fill; selectedGrid.BackgroundColor = Dark; selectedGrid.BorderStyle = BorderStyle.None; selectedGrid.RowHeadersVisible = false; selectedGrid.AllowUserToAddRows = false; selectedGrid.AllowUserToDeleteRows = false; selectedGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect; selectedGrid.AutoGenerateColumns = false;
-        selectedGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "ItemTitle", HeaderText = "SELECTED ITEM", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, ReadOnly = true });
+        selectedGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "ItemTitle", HeaderText = "PACK CONTENTS", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, ReadOnly = true });
         selectedGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Quantity", HeaderText = "QTY", Width = 75 });
         selectedGrid.DataError += (_, _) => { };
         selectedGrid.CellEndEdit += (_, _) => { NormalizeQuantities(); RefreshPreview(); };
@@ -249,7 +270,10 @@ internal sealed class MainForm : Form
         SetBusy(true, "Loading item names and game icons...");
         try
         {
-            allItems = await Task.Run(() => GameDataLoader.LoadItems(gamePathBox.Text));
+            var gameRoot = gamePathBox.Text.Trim();
+            allItems = await Task.Run(() => GameDataLoader.LoadItems(gameRoot));
+            workshopHeader.Craftbot = allItems.FirstOrDefault(x => x.Symbol == "obj_craftbot_craftbot1")?.Icon;
+            workshopHeader.Invalidate();
             categoryBox.Items.Clear(); categoryBox.Items.Add("All categories");
             foreach (var category in allItems.Select(x => x.Category).Distinct().OrderBy(x => x)) categoryBox.Items.Add(category);
             categoryBox.SelectedIndex = 0;
@@ -269,8 +293,16 @@ internal sealed class MainForm : Form
 
     private void AddSelectedItem()
     {
+        if (busy) return;
+        selectedGrid.EndEdit();
+        NormalizeQuantities();
         if (itemGrid.CurrentRow?.DataBoundItem is not GameItem item) return;
         var existing = selected.FirstOrDefault(x => x.Item.Uuid == item.Uuid);
+        if (existing is not null && (long)existing.Quantity + (int)quantity.Value > int.MaxValue)
+        {
+            ShowError("A stack can contain at most 2,147,483,647 items. Reduce its quantity before adding more.");
+            return;
+        }
         if (existing is null) selected.Add(new SelectedItem { Item = item, Quantity = (int)quantity.Value }); else existing.Quantity = checked(existing.Quantity + (int)quantity.Value);
         RefreshSelectedGrid();
     }
@@ -290,6 +322,7 @@ internal sealed class MainForm : Form
             selectedGrid.Rows[row].Tag = entry;
         }
         RefreshPreview();
+        SetBusy(busy);
         status.Text = selected.Count == 0 ? $"Ready — {allItems.Count:N0} survival items loaded." : $"Pack contains {selected.Count} glass box{(selected.Count == 1 ? "" : "es")}.";
     }
 
@@ -306,12 +339,13 @@ internal sealed class MainForm : Form
     private void RefreshPreview()
     {
         var old = preview.Image;
-        preview.Image = selected.Count == 0 ? null : BlueprintWriter.RenderIcon(selected);
+        preview.Image = selected.Count == 0 ? null : BlueprintWriter.RenderIcon(selected, nameBox.Text);
         old?.Dispose();
     }
 
     private void Generate()
     {
+        selectedGrid.EndEdit();
         NormalizeQuantities();
         try
         {
@@ -324,7 +358,14 @@ internal sealed class MainForm : Form
 
     private async Task LoadBlueprintsAsync()
     {
-        if (allItems.Count == 0 || !Directory.Exists(outputPathBox.Text.Trim())) return;
+        var loadVersion = ++libraryLoadVersion;
+        if (allItems.Count == 0 || !Directory.Exists(outputPathBox.Text.Trim()))
+        {
+            allBlueprints.Clear();
+            RefreshBlueprintGrid();
+            blueprintStatus.Text = "Choose an existing Blueprints folder to load the library.";
+            return;
+        }
         refreshBlueprintsButton.Enabled = false;
         createMaterialsButton.Enabled = false;
         blueprintStatus.Text = "Scanning local and subscribed blueprints...";
@@ -334,18 +375,20 @@ internal sealed class MainForm : Form
             var blueprintRoot = outputPathBox.Text.Trim();
             var workshopRoot = GameDataLoader.IsGameRoot(gamePathBox.Text.Trim()) ? BlueprintLibrary.FindWorkshopRoot(gamePathBox.Text.Trim()) : null;
             var includeWorkshop = includeWorkshopCheck.Checked;
-            allBlueprints = await Task.Run(() => BlueprintLibrary.Load(blueprintRoot, workshopRoot, includeWorkshop, itemLookup));
+            var loaded = await Task.Run(() => BlueprintLibrary.Load(blueprintRoot, workshopRoot, includeWorkshop, itemLookup));
+            if (loadVersion != libraryLoadVersion) return;
+            allBlueprints = loaded;
             RefreshBlueprintGrid();
             var local = allBlueprints.Count(x => x.Source == "Local");
             var workshop = allBlueprints.Count(x => x.Source == "Steam Workshop");
-            blueprintStatus.Text = $"Loaded {local:N0} local and {workshop:N0} subscribed blueprints.";
+            if (activeBlueprint is null) blueprintStatus.Text = $"Loaded {local:N0} local and {workshop:N0} subscribed blueprints. Select a blueprint to see its parts.";
         }
         catch (Exception ex)
         {
             blueprintStatus.Text = "Could not scan the blueprint library.";
             ShowError(ex.Message);
         }
-        finally { refreshBlueprintsButton.Enabled = true; }
+        finally { if (loadVersion == libraryLoadVersion) refreshBlueprintsButton.Enabled = !busy; }
     }
 
     private void RefreshBlueprintGrid()
@@ -372,6 +415,7 @@ internal sealed class MainForm : Form
         if (activeBlueprint is null)
         {
             createMaterialsButton.Enabled = false;
+            blueprintStatus.Text = "No matching blueprints. Try another search or refresh your library.";
             return;
         }
 
@@ -439,10 +483,148 @@ internal sealed class MainForm : Form
     }
 
     private Label MakeLabel(string text) => new() { Text = text, ForeColor = Color.Gainsboro, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(3, 5, 3, 0) };
-    private Button MakeButton(string text, EventHandler action) { var button = new Button { Text = text, Dock = DockStyle.Fill }; StyleSecondary(button); button.Click += action; return button; }
+    private Control SearchField(string title, Control field)
+    {
+        var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 0, 6) };
+        field.Dock = DockStyle.Bottom;
+        panel.Controls.Add(field);
+        panel.Controls.Add(new Label { Text = title, ForeColor = WorkshopTheme.Muted, Dock = DockStyle.Top, Height = 22, Font = new Font("Segoe UI", 8, FontStyle.Bold) });
+        return panel;
+    }
+    private Button MakeButton(string text, EventHandler action) { var button = new WorkshopButton { Text = text, Dock = DockStyle.Fill }; StyleSecondary(button); button.Click += action; return button; }
     private void StylePrimary(Button button) { button.FlatStyle = FlatStyle.Flat; button.FlatAppearance.BorderSize = 0; button.BackColor = Orange; button.ForeColor = Color.FromArgb(25, 25, 25); button.Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold); button.Cursor = Cursors.Hand; }
     private void StyleSecondary(Button button) { button.FlatStyle = FlatStyle.Flat; button.FlatAppearance.BorderColor = Orange; button.FlatAppearance.BorderSize = 1; button.BackColor = PanelGrey; button.ForeColor = Color.White; button.Cursor = Cursors.Hand; }
     private void StyleGrid(DataGridView grid) { grid.EnableHeadersVisualStyles = false; grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(31, 33, 36); grid.ColumnHeadersDefaultCellStyle.ForeColor = Orange; grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold); grid.DefaultCellStyle.BackColor = PanelGrey; grid.DefaultCellStyle.ForeColor = Color.White; grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(185, 91, 20); grid.DefaultCellStyle.SelectionForeColor = Color.White; grid.GridColor = Color.FromArgb(75, 77, 81); }
-    private void SetBusy(bool busy, string? message = null) { UseWaitCursor = busy; addButton.Enabled = !busy; generateButton.Enabled = !busy; refreshBlueprintsButton.Enabled = !busy; if (message is not null) status.Text = message; }
+    private void SetBusy(bool value, string? message = null)
+    {
+        busy = value;
+        UseWaitCursor = value;
+        addButton.Enabled = !value && allItems.Count > 0;
+        generateButton.Enabled = !value && selected.Count > 0;
+        removeButton.Enabled = !value && selected.Count > 0;
+        refreshBlueprintsButton.Enabled = !value;
+        includeWorkshopCheck.Enabled = !value;
+        gamePathBox.Enabled = outputPathBox.Enabled = !value;
+        if (message is not null) status.Text = message;
+    }
+
+    private void ApplyModernTheme(Control parent)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            if (control is TextBox text)
+            {
+                text.BackColor = Color.FromArgb(39, 49, 56);
+                text.ForeColor = Color.FromArgb(235, 240, 247);
+                text.BorderStyle = BorderStyle.FixedSingle;
+                text.Font = new Font("Segoe UI", 10.5f);
+                text.AccessibleName = text.PlaceholderText.Length > 0 ? text.PlaceholderText : text == nameBox ? "Blueprint name" : text == gamePathBox ? "Game folder" : "Blueprints folder";
+            }
+            else if (control is ComboBox combo) { combo.FlatStyle = FlatStyle.Flat; combo.BackColor = Color.FromArgb(39, 49, 56); combo.ForeColor = Color.White; combo.AccessibleName = "Item category"; }
+            else if (control is NumericUpDown number) { number.BackColor = Color.FromArgb(39, 49, 56); number.ForeColor = Color.White; number.BorderStyle = BorderStyle.FixedSingle; number.AccessibleName = "Item quantity"; }
+            else if (control is Button button)
+            {
+                button.Text = button.Text switch { "ADD TO PACK" => "+  Add to pack", "REMOVE SELECTED" => "Remove selected", "CREATE NEW BLUEPRINT" => "Create blueprint  →", "CREATE ITEM PARTS BLUEPRINT" => "Create item parts blueprint  →", "REFRESH" => "Refresh", _ => button.Text };
+                button.MinimumSize = new Size(0, 30);
+                button.FlatAppearance.BorderColor = Color.FromArgb(69, 81, 98);
+                button.FlatAppearance.MouseOverBackColor = button.BackColor == Orange ? Color.FromArgb(255, 154, 65) : Color.FromArgb(47, 58, 74);
+            }
+            else if (control is DataGridView grid)
+            {
+                grid.Font = new Font("Segoe UI", 9.5f);
+                grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+                grid.ColumnHeadersHeight = 36;
+                grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Dark;
+                grid.ColumnHeadersDefaultCellStyle.BackColor = Dark;
+                grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(157, 170, 187);
+                grid.DefaultCellStyle.BackColor = PanelGrey;
+                grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(23, 32, 33);
+                grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(69, 66, 44);
+                grid.DefaultCellStyle.Padding = new Padding(5);
+                grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+                grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+                grid.GridColor = Color.FromArgb(37, 50, 50);
+                grid.RowTemplate.Height = grid == selectedGrid ? 38 : grid.RowTemplate.Height;
+                grid.CellPainting += (_, e) =>
+                {
+                    if (e.RowIndex < 0 || e.ColumnIndex != 0 || grid == selectedGrid || e.Graphics is null) return;
+                    e.PaintBackground(e.ClipBounds, true);
+                    var r = Rectangle.Inflate(e.CellBounds, -5, -5);
+                    using var plate = WorkshopTheme.Plate(r, 6);
+                    using var blue = new SolidBrush(Color.FromArgb(31, 77, 99));
+                    e.Graphics.FillPath(blue, plate);
+                    var state = e.Graphics.Save();
+                    e.Graphics.SetClip(plate);
+                    WorkshopTheme.Grid(e.Graphics, r, 12);
+                    if (e.Value is Image icon) e.Graphics.DrawImage(icon, Rectangle.Inflate(r, -3, -3));
+                    e.Graphics.Restore(state);
+                    using var border = new Pen(grid.Rows[e.RowIndex].Selected ? WorkshopTheme.Accent : Color.FromArgb(88, 127, 145), grid.Rows[e.RowIndex].Selected ? 2 : 1);
+                    e.Graphics.DrawPath(border, plate);
+                    e.Handled = true;
+                };
+            }
+            else if (control is SplitContainer divider) { divider.SplitterWidth = 10; }
+            else if (control is PictureBox picture) { picture.BackColor = Dark; }
+            ApplyModernTheme(control);
+        }
+    }
+
+    internal void VerifyUi(List<GameItem> items, List<BlueprintEntry> library, string screenshotRoot)
+    {
+        allItems = items;
+        workshopHeader.Craftbot = items.FirstOrDefault(x => x.Symbol == "obj_craftbot_craftbot1")?.Icon;
+        allBlueprints = library;
+        gamePathBox.Text = @"C:\Games\Scrap Mechanic";
+        outputPathBox.Text = @"%APPDATA%\Axolot Games\Scrap Mechanic\User\YourProfile\Blueprints";
+        categoryBox.Items.Add("All categories");
+        foreach (var category in items.Select(x => x.Category).Distinct().OrderBy(x => x)) categoryBox.Items.Add(category);
+        categoryBox.SelectedIndex = 0;
+        SetBusy(false);
+        Show();
+        categoryBox.SelectedItem = "Blocks";
+        if (itemGrid.Rows.Count == 0 || itemGrid.Rows.Cast<DataGridViewRow>().Any(r => r.DataBoundItem is GameItem i && i.Category != "Blocks")) throw new InvalidDataException("Category filter failed.");
+        categoryBox.SelectedIndex = 0;
+        searchBox.Text = "obj_consumable_component";
+        if (itemGrid.Rows.Count != 1) throw new InvalidDataException("Item search failed.");
+        AddSelectedItem();
+        AddSelectedItem();
+        if (selected.Count != 1 || selected[0].Quantity != 20) throw new InvalidDataException("Adding or merging items failed.");
+        selectedGrid.Rows[0].Cells[1].Value = 42;
+        NormalizeQuantities();
+        if (selected[0].Quantity != 42) throw new InvalidDataException("Quantity editing failed.");
+        RemoveSelected();
+        if (selected.Count != 0 || generateButton.Enabled) throw new InvalidDataException("Removing items or empty-pack state failed.");
+        AddSelectedItem();
+        searchBox.Clear();
+        RefreshBlueprintGrid();
+        Directory.CreateDirectory(screenshotRoot);
+        foreach (var windowSize in new[] { new Size(1320, 860), MinimumSize })
+        {
+            Size = windowSize;
+            SizeMainPanels();
+            for (var tab = 0; tab < 2; tab++)
+            {
+                mainTabs.SelectedIndex = tab;
+                PerformLayout();
+                Application.DoEvents();
+                using var bitmap = new Bitmap(Width, Height);
+                DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size));
+                bitmap.Save(Path.Combine(screenshotRoot, $"tab-{tab}-{windowSize.Width}.png"));
+            }
+        }
+        blueprintSearchBox.Text = "__no_such_blueprint__";
+        if (blueprintGrid.Rows.Count != 0 || createMaterialsButton.Enabled || materialGrid.Rows.Count != 0) throw new InvalidDataException("Empty library search retained stale materials.");
+        blueprintSearchBox.Clear();
+        if (activeBlueprint is null || materialGrid.Rows.Count == 0) throw new InvalidDataException("Blueprint selection did not populate materials.");
+        Close();
+    }
     private void ShowError(string message) => MessageBox.Show(this, message, "Glass Box Blueprint Maker", MessageBoxButtons.OK, MessageBoxIcon.Error);
 }
+
+
+
+
+
+
+
+
